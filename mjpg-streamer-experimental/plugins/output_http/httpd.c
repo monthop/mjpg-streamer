@@ -854,7 +854,7 @@ void execute_cgi(int id, int fd, char *parameter, char *query_string)
     buffer_length = 3;
     buffer_length = strlen(fn_buffer) + strlen(enviroment) + strlen(parameter) + 256;
 
-    buffer = malloc(buffer_length);
+    buffer = calloc(buffer_length, sizeof(char));
     if (buffer == NULL) {
         exit(EXIT_FAILURE);
     }
@@ -867,18 +867,22 @@ void execute_cgi(int id, int fd, char *parameter, char *query_string)
             fn_buffer);
 
     f = popen(buffer, "r");
-    if(f == NULL) {
+    if (f == NULL) {
         DBG("Unable to execute the requested CGI script\n");
         send_error(fd, 403, "CGI script cannot be executed");
-        return;
+        goto exit_exec_cgi;
     }
 
-    while((i = fread(buffer, 1, sizeof(buffer), f)) > 0) {
+    write(fd, "HTTP/1.0 200 OK\r\n", 18);
+    while((i = fread(buffer, 1, strlen(buffer), f)) > 0) {
         if (write(fd, buffer, i) < 0) {
             fclose(f);
-            return;
+            goto exit_exec_cgi;
         }
     }
+
+    exit_exec_cgi:
+        free(buffer);
 }
 
 
@@ -1404,7 +1408,7 @@ void *client_thread(void *arg)
     /*
      * Since when we are working with multiple input plugins
      * there are some url which could have a _[plugin number suffix]
-     * For compatibility reasons it could be left in that case the output will be
+     * For compatibility reasons it could be left blank. In this case the HTTP response will be
      * generated from the 0. input plugin
      */
     if(query_suffixed) {
@@ -2102,7 +2106,7 @@ void send_output_JSON(int fd, int input_number)
                             return;
                         }
 
-                        if(j != pglobal->out[input_number].out_parameters[i].ctrl.maximum) {
+                        if (j != pglobal->out[input_number].out_parameters[i].ctrl.maximum) {
                             sprintf(menuString + prevSize, "\"%d\": \"%s\", ", j , (char*)&pglobal->out[input_number].out_parameters[i].menuitems[j].name);
                         } else {
                             sprintf(menuString + prevSize, "\"%d\": \"%s\"", j , (char*)&pglobal->out[input_number].out_parameters[i].menuitems[j].name);
@@ -2138,6 +2142,7 @@ void send_output_JSON(int fd, int input_number)
                     pglobal->out[input_number].out_parameters[i].group
                    );
 
+            check_JSON_string(menuString, 0, strlen(menuString));
             if(pglobal->out[input_number].out_parameters[i].ctrl.type == V4L2_CTRL_TYPE_MENU) {
                 sprintf(buffer + strlen(buffer),
                         ",\n"
